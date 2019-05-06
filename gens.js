@@ -37,7 +37,11 @@ function RightAnchor(method){
 }
 
 function RegexReplace(subject,expression,replacement){
-  return `{regexp_replace(${subject},${escapeRegExp(expression)},${replacement})}`
+  return `{regexp_replace(${subject},${expression},${replacement})}`
+}
+
+function FullReplace(subject,expression,replacement){
+  
 }
 
 function Replace(subject,target,replacement){

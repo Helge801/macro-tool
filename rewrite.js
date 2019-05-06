@@ -75,26 +75,37 @@ function block(){
 }
 
 function escapeMacro(macro){
+  console.log(macro)
   var chars = macro.split('');
+  console.log("chars",chars);
   var layer = 0;
+  var a = 0;
+  var e;
   return chars.map(c => {
     switch(c){
 
       case "(":
-        layer++;
-        return escapeChar(c,layer - 1);
+        if(!e) layer++;
+        return escapeChar(c,layer + a - (e ? 0 : 1));
 
       case ")":
-        layer--;
-        return escapeChar(c,layer);
+        if(!e) layer--;
+        return escapeChar(c,layer + a);
 
       case ",":
-        return escapeChar(c,layer - 1);
+        return escapeChar(c,layer + a - 1);
 
       case "{":
       case "}":
       case "\\":
-        return escapeChar(c,layer);
+        return escapeChar(c,layer + a);
+
+      case String.fromCharCode(134):
+      case String.fromCharCode(135):
+        e = e ? undefined : c;
+        a = e == String.fromCharCode(134) ? 1 : 0;
+        console.log(`e: ${e}, a: ${a}`)
+        return '';
 
       default:
         return c;

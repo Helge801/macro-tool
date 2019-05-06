@@ -64,7 +64,7 @@ function groupStatements(tokens){
 
         // check if token is a string or regex
         if(tokens[i].match(/^\".*\"$|^\/.*\/$/)){
-          statements.push(tokens[i].replace(/^\"|\"$/g,""));
+          statements.push(handleEscapable(tokens[i]));
           break;
         }
 
@@ -92,12 +92,34 @@ function groupStatements(tokens){
   
 }
 
+function handleEscapable(expression){
+  if(expression.match(/^\//)) return handleRegex(expression);
+  if(expression.match(/^\"/)) return handleString(expression);
+
+  console.log(`I dont know what to do with this expression: ${expression}`);
+  process.exit();
+}
+
+function handleString(expression){
+  superLog(`handling string: ${expression}`)
+  expression = expression.replace(/^\"|\"$/g,String.fromCharCode(134));
+  superLog(expression);
+  return expression;
+}
+
+function handleRegex(expression){
+  return expression.replace(/^\/|\/$/g,String.fromCharCode(135));
+}
+
 function handleFunction(tokens, subject, index){
   switch(tokens[index]){
     case ".match(":
       return catureMatchStatement(tokens, subject, index)
+    case ".replace(":
+      return captureReplaceStatement(tokens, subject, index)
     default:
-      console.log(`I don't know what to do with this function: ${tokens[i].replace(/^\.|\($/,'')}`)
+      console.log(`I don't know what to do with this function: ${tokens[index].replace(/^\.|\($/,'')}`)
+      process.exit();
   }
 
   superLog("functions not yet handled");
@@ -123,17 +145,54 @@ function handleEquality(a,b){
   )
 }
 
-function catureMatchStatement(tokens, subject, index){
-  var { startingIndex, endingIndex } = extractInternalsFromBrackets(tokens, "(", index);
+function captureReplaceStatement(tokens, subject, index){
+  superLog("getting args for replace");
+  console.log(tokens)
+  console.log(index)
+  console.log(subject)
+
+  var { endingIndex, args } = extractInternalsFromBrackets(tokens, "(", index);
+
+  if(args.length != 2){
+    console.log(`Wrong number of arguments for replace function, expected 2, get ${args.length}`);
+    process.exit();
+  }
+
+  console.log(args);
+  var isRegex = args[0].length == 1 && args[0][0].match(/^\/.*\/$/),
+    expression = groupStatements(args[0]),
+    replacement = groupStatements(args[1]),
+    statement = handleReplaceStatement(subject, expression, replacement, isRegex);
+
+  console.log("expression",expression)
+    
   return {
-    statement: handleMatch(subject, groupStatements(tokens.slice(startingIndex,endingIndex))),
+    index: endingIndex,
+    statement
+  }
+}
+
+function handleReplaceStatement(subject, expression, replacement, isRegex){
+  console.log("handleing replacement");
+  var func = isRegex ? gen.RegexReplace : gen.Replace;
+  return func(subject,expression,replacement);
+}
+
+function catureMatchStatement(tokens, subject, index){
+  superLog("getting match args");
+  console.log(tokens)
+  var { endingIndex, args } = extractInternalsFromBrackets(tokens, "(", index);
+  console.log("args",args)
+  return {
+    statement: handleMatch(subject, args[0][0]), // handleMatch evaluate if the argument is a regex or not but this cannot be done while accepting statements as an agrgument to handleMatch. Should find a better solution
     index: endingIndex
   };
 }
 
 // Potential issue with evalutaing regex. Regex will be evaluted 
+// TODO: Adjust to wok with partial match
 function handleMatch(left,right){
-  
+  console.log("handling match",left,right)
   var func = right.match(/^\/.*\/$/) ? gen.RegexReplace : gen.Replace;
   return gen.IfStatment(
     func(left,right.replace(/^\/|\/$/g,''),''),
@@ -143,15 +202,20 @@ function handleMatch(left,right){
 }
 
 function captureIfStatement(tokens, index){
-  var { startingIndex, endingIndex } = extractInternalsFromBrackets(tokens,"(",index);
-  var condition = groupStatements(tokens.slice(startingIndex,endingIndex));
-  var {startingIndex,endingIndex} = extractInternalsFromBrackets(tokens,"{",endingIndex);
-  var whenTrue = groupStatements(tokens.slice(startingIndex,endingIndex));
+  superLog("getting condition");
+  console.log(tokens,index)
+  var {endingIndex, args } = extractInternalsFromBrackets(tokens,"(",index);
+  var condition = groupStatements(args[0]);
+  console.log(`condition:\n${condition}`)
+  var {endingIndex, args} = extractInternalsFromBrackets(tokens,"{",endingIndex);
+  var whenTrue = groupStatements(args[0]);
   var whenFalse = "";
   if(tokens[endingIndex + 1] && tokens[endingIndex + 1] == "else"){
     console.log("found else statement")
-    var {startingIndex,endingIndex} = extractInternalsFromBrackets(tokens,"{",endingIndex + 1);
-    whenFalse = groupStatements(tokens.slice(startingIndex,endingIndex));
+    var {endingIndex, args} = extractInternalsFromBrackets(tokens,"{",endingIndex + 1);
+    console.log(args)
+    console.log(args[0])
+    whenFalse = groupStatements(args[0]);
   }
 
   return {
@@ -162,22 +226,46 @@ function captureIfStatement(tokens, index){
 }
 
 function extractInternalsFromBrackets(parts, token, indexOffset = 0){
-  if(parts[indexOffset].match(RegExp(`.+\\${token}$`))) parts[indexOffset] = token;
   var depth = -1;
+  var args = [];
   for( var i = indexOffset; i < parts.length; i++){
     var inversToken = getInversToken(token);
     var startingIndex;
+    var intermediateIndex;
     switch(parts[i]){
       case token:
         if(depth < 0)
-          startingIndex = i + 1;
+          intermediateIndex = startingIndex = i + 1;
         depth++;
         break;
       case inversToken:
-        if(depth == 0)
-          return {endingIndex: i, startingIndex};
+        if(depth == 0){
+          args.push(parts.slice(intermediateIndex,i))
+          console.log(i)
+          console.log(`args\n${args.join(" + ")}`);
+          return {
+            endingIndex: i,
+            startingIndex,
+            args
+          };
+        }
         depth--;
         break;
+      case ",":
+        if(depth == 0 && token === "("){
+          args.push(parts.slice(intermediateIndex,i));
+          intermediateIndex = i + 1;
+        }
+        break;
+
+      default:
+        //check for beginning of function
+        if(token === "(" && parts[i].match(/\($/)){
+          if(depth < 0)
+            intermediateIndex = startingIndex = i + 1;
+          depth++;
+          break;
+        }
     }
   }
 };
