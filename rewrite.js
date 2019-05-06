@@ -6,7 +6,7 @@ const FLAGS = {};
 
 collectFlags();
 if(FLAGS.unknown)
-  console.log(`Unknown flag: ${FLAGS.unknown}`)
+  err(`Unknown flag: ${FLAGS.unknown}`)
 else
   command();
 
@@ -51,7 +51,7 @@ function command(){
       macro = eva.evaluateFile(file);
       break;
     default:
-      console.log(`Unknown command: ${args[0]}`)
+      err(`Unknown command: ${args[0]}`)
       break;
   }
   if(macro) returnMacro(macro);
@@ -64,7 +64,7 @@ function returnMacro(macro){
 }
 
 function block(){
-  if(args.length < 4) return console.log("Not enough arguments for a blocking macro.\nExpecting: [column-to-nullify] [column-to-evaluate] [eveluation-string] [method]\nexample: block id category clothing contains\navailible methods include: equals, starts-with, ends-with, contains");
+  if(args.length < 4) return err("Not enough arguments for a blocking macro.\nExpecting: [column-to-nullify] [column-to-evaluate] [eveluation-string] [method]\nexample: block id category clothing contains\navailible methods include: equals, starts-with, ends-with, contains");
 
   var nullCol = gen.Column(args.shift());
   var evalCol = gen.Column(args.shift());
@@ -75,9 +75,7 @@ function block(){
 }
 
 function escapeMacro(macro){
-  console.log(macro)
   var chars = macro.split('');
-  console.log("chars",chars);
   var layer = 0;
   var a = 0;
   var e;
@@ -104,7 +102,6 @@ function escapeMacro(macro){
       case String.fromCharCode(135):
         e = e ? undefined : c;
         a = e == String.fromCharCode(134) ? 1 : 0;
-        console.log(`e: ${e}, a: ${a}`)
         return '';
 
       default:

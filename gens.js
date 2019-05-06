@@ -8,7 +8,6 @@ function IfStatment(source, notEmpty, empty ){
 }
 
 function Column(col){
-  console.log(`generating col from ${col}`)
   return `{product.${col}}`
 }
 
@@ -28,9 +27,11 @@ function LeftAnchor(method){
 
 function RightAnchor(method){
   switch(method){
+
     case "ends-with":
     case "equals":
       return "$";
+
     default:
       return ".*";
   }

@@ -3,10 +3,7 @@ gen = require('./gens.js');
 
 function evaluateFile(filePath){
   var content
-  if(!filePath){
-    console.log('filepath expected for eval command');
-    return null;
-  }
+  if(!filePath) return null;
   try{ content = fs.readFileSync(filePath).toString(); }
   catch(e){ console.log(`Error parsing file: ${filePath}`) }
   return parseContent(content);
@@ -14,9 +11,7 @@ function evaluateFile(filePath){
 
 function parseContent(content){
   content = content.replace(/\s+/g," ").trim();
-  console.log(content);
   var parts = tokenize(content);
-  console.log(parts);
   return groupStatements(parts);
 }
 
@@ -101,9 +96,7 @@ function handleEscapable(expression){
 }
 
 function handleString(expression){
-  superLog(`handling string: ${expression}`)
   expression = expression.replace(/^\"|\"$/g,String.fromCharCode(134));
-  superLog(expression);
   return expression;
 }
 
@@ -121,8 +114,6 @@ function handleFunction(tokens, subject, index){
       console.log(`I don't know what to do with this function: ${tokens[index].replace(/^\.|\($/,'')}`)
       process.exit();
   }
-
-  superLog("functions not yet handled");
 }
 
 function handleOperator(left,op,right){
@@ -146,26 +137,15 @@ function handleEquality(a,b){
 }
 
 function captureReplaceStatement(tokens, subject, index){
-  superLog("getting args for replace");
-  console.log(tokens)
-  console.log(index)
-  console.log(subject)
-
   var { endingIndex, args } = extractInternalsFromBrackets(tokens, "(", index);
 
-  if(args.length != 2){
-    console.log(`Wrong number of arguments for replace function, expected 2, get ${args.length}`);
-    process.exit();
-  }
+  if(args.length != 2) err(`Wrong number of arguments for replace function, expected 2, get ${args.length}`);
 
-  console.log(args);
   var isRegex = args[0].length == 1 && args[0][0].match(/^\/.*\/$/),
     expression = groupStatements(args[0]),
     replacement = groupStatements(args[1]),
     statement = handleReplaceStatement(subject, expression, replacement, isRegex);
 
-  console.log("expression",expression)
-    
   return {
     index: endingIndex,
     statement
@@ -173,16 +153,12 @@ function captureReplaceStatement(tokens, subject, index){
 }
 
 function handleReplaceStatement(subject, expression, replacement, isRegex){
-  console.log("handleing replacement");
   var func = isRegex ? gen.RegexReplace : gen.Replace;
   return func(subject,expression,replacement);
 }
 
 function catureMatchStatement(tokens, subject, index){
-  superLog("getting match args");
-  console.log(tokens)
   var { endingIndex, args } = extractInternalsFromBrackets(tokens, "(", index);
-  console.log("args",args)
   return {
     statement: handleMatch(subject, args[0][0]), // handleMatch evaluate if the argument is a regex or not but this cannot be done while accepting statements as an agrgument to handleMatch. Should find a better solution
     index: endingIndex
@@ -192,7 +168,6 @@ function catureMatchStatement(tokens, subject, index){
 // Potential issue with evalutaing regex. Regex will be evaluted 
 // TODO: Adjust to wok with partial match
 function handleMatch(left,right){
-  console.log("handling match",left,right)
   var func = right.match(/^\/.*\/$/) ? gen.RegexReplace : gen.Replace;
   return gen.IfStatment(
     func(left,right.replace(/^\/|\/$/g,''),''),
@@ -202,19 +177,13 @@ function handleMatch(left,right){
 }
 
 function captureIfStatement(tokens, index){
-  superLog("getting condition");
-  console.log(tokens,index)
   var {endingIndex, args } = extractInternalsFromBrackets(tokens,"(",index);
   var condition = groupStatements(args[0]);
-  console.log(`condition:\n${condition}`)
   var {endingIndex, args} = extractInternalsFromBrackets(tokens,"{",endingIndex);
   var whenTrue = groupStatements(args[0]);
   var whenFalse = "";
   if(tokens[endingIndex + 1] && tokens[endingIndex + 1] == "else"){
-    console.log("found else statement")
     var {endingIndex, args} = extractInternalsFromBrackets(tokens,"{",endingIndex + 1);
-    console.log(args)
-    console.log(args[0])
     whenFalse = groupStatements(args[0]);
   }
 
@@ -233,24 +202,21 @@ function extractInternalsFromBrackets(parts, token, indexOffset = 0){
     var startingIndex;
     var intermediateIndex;
     switch(parts[i]){
+
       case token:
         if(depth < 0)
           intermediateIndex = startingIndex = i + 1;
         depth++;
         break;
+
       case inversToken:
         if(depth == 0){
           args.push(parts.slice(intermediateIndex,i))
-          console.log(i)
-          console.log(`args\n${args.join(" + ")}`);
-          return {
-            endingIndex: i,
-            startingIndex,
-            args
-          };
+          return { endingIndex: i, startingIndex, args };
         }
         depth--;
         break;
+
       case ",":
         if(depth == 0 && token === "("){
           args.push(parts.slice(intermediateIndex,i));
@@ -259,7 +225,6 @@ function extractInternalsFromBrackets(parts, token, indexOffset = 0){
         break;
 
       default:
-        //check for beginning of function
         if(token === "(" && parts[i].match(/\($/)){
           if(depth < 0)
             intermediateIndex = startingIndex = i + 1;
@@ -289,13 +254,9 @@ function getInversToken(token){
 function tokenize(content){
 
   var tokens = content.split('');
-  console.log(`Original tokens:\n${tokens}`);
   tokens = groupEscapeable(tokens,'"',true);
-  console.log(`Originalfter quotes tokens:\n${tokens}`);
   tokens = groupEscapeable(tokens,"/",true);
-  console.log(`After regex tokens:\n${tokens}`);
   tokens = groupTokens(tokens);
-  console.log(`after grouping  tokens:\n${tokens}`);
   return tokens
 }
 
@@ -370,21 +331,18 @@ function groupTokens(tokens){
   return grouped;
 }
 
-function parseError(parts){
-  console.log("Parsing Error");
-}
-
 function superLog(msg){
   var p = "";
   for(var i = -4;i < msg.length; i++){p += "*"}
   console.log(`\n\t${p}\n\t* ${msg} *\n\t${p}\n`);
 }
 
-function catureArgs(tokens,index){
-  
+function err(msg){
+  console.log(msg ? msg : "Parsing error");
 }
 
 module.exports = {
   evaluateFile,
+  err,
 }
 
