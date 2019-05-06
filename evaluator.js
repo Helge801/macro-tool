@@ -20,30 +20,21 @@ function parseContent(content){
   return groupStatements(parts);
 }
 
-// function parseTokens(tokens){
-  // var macro;
-  // switch(tokens[0]){
-    // case "if(":
-      // macro = handleIf(tokens);
-      // break;
-    // case "id":
-      // macro = gen.Column(tokens[0]);
-      // break;
-  // }
-  // return macro;
-// }
-
 function groupStatements(tokens){
   var statements = [];
 
   for(var i = 0; i < tokens.length; i++){
     var operator;
+
     switch(tokens[i]){
+
+      case "if":
       case "if(":
         let { index, statement } = captureIfStatement(tokens, i);
         statements.push(statement);
         i = index;
         break;
+
       case "id":
       case "title":
       case "description":
@@ -56,18 +47,40 @@ function groupStatements(tokens){
       case "currency":
         statements.push(gen.Column(tokens[i]));
         break;
+
       case "==":
       case "===":
+      case "equals":
+      case "^=":
+      case "start_with":
+      case "begins_with":
+      case "=$":
+      case "ends_with":
+      case "includes":
         operator = tokens[i];
         continue;
+
       default:
-        if(tokens[i].match(/^\".*\"$/)){
-          statements.push(tokens[i].replace(/\"/g,""));
+
+        // check if token is a string or regex
+        if(tokens[i].match(/^\".*\"$|^\/.*\/$/)){
+          statements.push(tokens[i].replace(/^\"|\"$/g,""));
           break;
         }
 
+        // check if token is a function
+        if(tokens[i].match(/\..+\(/)){
+          let { index, statement } = handleFunction(tokens, statements.pop(), i);
+          statements.push(statement);
+          i = index;
+          break;
+        }
+
+        // handle failure to parse token
         console.log(`I don't know what to do with this token: ${tokens[i]}`);
+        console.log(tokens);
         process.exit();
+
     }
     if(operator){
       var statement = handleOperator(statements[statements.length -2],operator,statements[statements.length -1]);
@@ -79,11 +92,24 @@ function groupStatements(tokens){
   
 }
 
+function handleFunction(tokens, subject, index){
+  switch(tokens[index]){
+    case ".match(":
+      return catureMatchStatement(tokens, subject, index)
+    default:
+      console.log(`I don't know what to do with this function: ${tokens[i].replace(/^\.|\($/,'')}`)
+  }
+
+  superLog("functions not yet handled");
+}
+
 function handleOperator(left,op,right){
   switch(op){
+
     case "==":
     case "===":
       return handleEquality(left,right);
+
     default:
       console.log(`I don't know how to handle the operator: ${op}`);
   }
@@ -97,8 +123,26 @@ function handleEquality(a,b){
   )
 }
 
+function catureMatchStatement(tokens, subject, index){
+  var { startingIndex, endingIndex } = extractInternalsFromBrackets(tokens, "(", index);
+  return {
+    statement: handleMatch(subject, groupStatements(tokens.slice(startingIndex,endingIndex))),
+    index: endingIndex
+  };
+}
+
+// Potential issue with evalutaing regex. Regex will be evaluted 
+function handleMatch(left,right){
+  
+  var func = right.match(/^\/.*\/$/) ? gen.RegexReplace : gen.Replace;
+  return gen.IfStatment(
+    func(left,right.replace(/^\/|\/$/g,''),''),
+    "",
+    "true"
+  )
+}
+
 function captureIfStatement(tokens, index){
-  tokens[0] = "(";
   var { startingIndex, endingIndex } = extractInternalsFromBrackets(tokens,"(",index);
   var condition = groupStatements(tokens.slice(startingIndex,endingIndex));
   var {startingIndex,endingIndex} = extractInternalsFromBrackets(tokens,"{",endingIndex);
@@ -117,22 +161,8 @@ function captureIfStatement(tokens, index){
 
 }
 
-// HANDLERS
-
-// function handleIf(parts){
-//
-  // var { startingIndex, endingIndex } = extractInternalsFromBrackets(parts,"(");
-  // var condition = parts.slice(startingIndex,endingIndex).join('');
-  // var {startingIndex,endingIndex} = extractInternalsFromBrackets(parts,"{",endingIndex);
-  // var whenTrue = parseTokens(parts.slice(startingIndex,endingIndex));
-//
-  // var macro = gen.IfStatment(condition,whenTrue,"");
-  // return macro;
-// }
-
-// HELPERS
-
 function extractInternalsFromBrackets(parts, token, indexOffset = 0){
+  if(parts[indexOffset].match(RegExp(`.+\\${token}$`))) parts[indexOffset] = token;
   var depth = -1;
   for( var i = indexOffset; i < parts.length; i++){
     var inversToken = getInversToken(token);
@@ -182,7 +212,7 @@ function tokenize(content){
 }
 
 function groupEscapeable(tokens,token,escapeable){
-  var grouped = [], found;
+  var grouped = [], found, breakNext;
 
   for(var i = 0;i < tokens.length; i++){
     switch(tokens[i]){
@@ -209,68 +239,64 @@ function groupEscapeable(tokens,token,escapeable){
 }
 
 function groupTokens(tokens){
-  var grouped = [], index;
+  var grouped = [], 
+    index,
+    token = "",
+    addToken = (t) => {
+      if(token) grouped.push(token);
+      token = "";
+      if(t) grouped.push(t);
+    };
+
   for(var i = 0; i < tokens.length; i++){
-    if(i == tokens.length - 1) superLog("last index");
-    if(tokens[i].match(/^\s$/) || i == tokens.length - 1){
-      if(index || index == 0){
-        console.log(`slicing ${index} to ${i}`);
-        var newTokens = divideTokens(tokens.slice(index,i).join(''));
-        grouped.push(...newTokens);
-      } else if(i == tokens.length - 1) {
-        var newTokens = divideTokens(tokens[i]);
-        grouped.push(...newTokens);
-      }
-      index = undefined;
-    } else {
-      if(!index && index != 0){
-        console.log(`setting index: ${i}`)
-        index = i;
-      }
+    switch(tokens[i]){
+
+      case " ":
+        addToken();
+        break;
+
+      case ".":
+        addToken();
+        token += tokens[i];
+        break;
+
+      case ",":
+      case ")":
+      case "{":
+      case "}":
+      case "]":
+        addToken(tokens[i]);
+        break;
+
+      case "(":
+      case "[":
+        token += tokens[i];
+        addToken();
+        break;
+
+      default:
+        token += tokens[i];
+
     }
   }
   return grouped;
 }
 
-function divideTokens(token){
-  console.log(token);
-  tokens = token.split(/(?<=[\(\[\{\}])|(?=[\)\]\}\{])/);
-  console.log(tokens);
-  return tokens
-}
-
-// function groupWords(parts){
-  // var grouped = [], index;
-  // for(var i = 0; i < parts.length; i++){
-    // console.log(i)
-    // if(parts[i].match(/^\w{1}$/)){
-      // if(!index && index != 0){
-        // console.log(`setting index: ${i}`)
-        // index = i;
-      // }
-    // } else {
-      // if(index || index == 0){
-        // console.log(`slicing ${index} to ${i}`);
-        // grouped.push(parts.slice(index,i).join(''));
-      // }
-      // grouped.push(parts[i]);
-      // index = undefined;
-    // }
-  // }
-  // return grouped;
-// }
-
 function parseError(parts){
   console.log("Parsing Error");
 }
-
-module.exports = {
-  evaluateFile,
-}
-
 
 function superLog(msg){
   var p = "";
   for(var i = -4;i < msg.length; i++){p += "*"}
   console.log(`\n\t${p}\n\t* ${msg} *\n\t${p}\n`);
 }
+
+function catureArgs(tokens,index){
+  
+}
+
+module.exports = {
+  evaluateFile,
+}
+

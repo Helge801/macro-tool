@@ -36,8 +36,18 @@ function RightAnchor(method){
   }
 }
 
+function RegexReplace(subject,expression,replacement){
+  return `{regexp_replace(${subject},${escapeRegExp(expression)},${replacement})}`
+}
+
 function Replace(subject,target,replacement){
   return `{replace(${subject},${target},${replacement})}`
+}
+
+//Helpers
+
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 module.exports = {
@@ -48,4 +58,5 @@ module.exports = {
   LeftAnchor,
   RightAnchor,
   Replace,
+  RegexReplace,
 }
