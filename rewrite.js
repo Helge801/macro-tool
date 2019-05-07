@@ -114,13 +114,8 @@ function escapeMacro(macro){
 
 
 function escapeChar(char, layer){
-  if( layer < 1) return char;
 
-  count = 1;
-
-  for(var i = 1; i < layer; i++){
-    count = (count * 2) + 1;
-  }
+  count = Math.pow(2,layer) - 1;
   
   for(var i = 0; i < count; i++){
     char = FLAGS.extraEscape ? "\\\\" + char : "\\" + char;

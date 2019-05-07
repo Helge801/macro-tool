@@ -79,9 +79,8 @@ function processStatements(tokens){
         }
 
         // handle failure to parse token
-        console.log(`I don't know what to do with this token: ${tokens[i]}`);
         console.log(tokens);
-        process.exit();
+        err(`I don't know what to do with this token: ${tokens[i]}`);
 
     }
     if(operator){
@@ -167,8 +166,6 @@ function handleReplaceStatement(subject, expression, replacement, isRegex){
 function catureMatchStatement(tokens, subject, index){
   var { endingIndex, args } = extractInternalsFromBrackets(tokens, "(", index),
     statement;
-
-  console.log("args from match stat:\n",args)
 
   switch(args.length){
 
@@ -287,11 +284,11 @@ function tokenize(content){
 
   var tokens = content.split('');
   tokens = groupEscapeable(tokens,'"',true);
-  console.log(tokens)
+  // console.log(tokens)
   tokens = groupEscapeable(tokens,"/",true);
-  console.log(tokens)
+  // console.log(tokens)
   tokens = groupTokens(tokens);
-  console.log(tokens)
+  // console.log(tokens)
   return tokens
 
 }
@@ -375,6 +372,7 @@ function superLog(msg){
 
 function err(msg){
   console.log(msg ? msg : "Parsing error");
+  process.exit();
 }
 
 function warning(msg){

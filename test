@@ -1,1 +1,5 @@
-title.match(/^(\w+)/,1)
+if( title.match(/Color\w+/)){
+  "title starts with color"
+} else {
+  title.replace(/^\w+/,"Add Color")
+}
