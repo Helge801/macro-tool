@@ -1,21 +1,22 @@
 fs = require('fs');
 gen = require('./gens.js');
+set = require('./settings.js');
 
 function evaluateFile(filePath){
   var content
   if(!filePath) return null;
   try{ content = fs.readFileSync(filePath).toString(); }
-  catch(e){ console.log(`Error parsing file: ${filePath}`) }
+  catch(e){ err(`Error parsing file: ${filePath}`) }
   return parseContent(content);
 }
 
 function parseContent(content){
   content = content.replace(/\s+/g," ").trim();
   var parts = tokenize(content);
-  return groupStatements(parts);
+  return processStatements(parts);
 }
 
-function groupStatements(tokens){
+function processStatements(tokens){
   var statements = [];
 
   for(var i = 0; i < tokens.length; i++){
@@ -57,17 +58,23 @@ function groupStatements(tokens){
 
       default:
 
-        // check if token is a string or regex
+        // handle regex and strings
         if(tokens[i].match(/^\".*\"$|^\/.*\/$/)){
           statements.push(handleEscapable(tokens[i]));
           break;
         }
 
-        // check if token is a function
+        // handle functions
         if(tokens[i].match(/\..+\(/)){
           let { index, statement } = handleFunction(tokens, statements.pop(), i);
           statements.push(statement);
           i = index;
+          break;
+        }
+
+        // handle numbers
+        if(tokens[i].match(/^\d+$/)){
+          statements.push(tokens[i]);
           break;
         }
 
@@ -96,12 +103,12 @@ function handleEscapable(expression){
 }
 
 function handleString(expression){
-  expression = expression.replace(/^\"|\"$/g,String.fromCharCode(134));
+  expression = expression.replace(/^\"|\"$/g, set.STRING_DELIMITER);
   return expression;
 }
 
 function handleRegex(expression){
-  return expression.replace(/^\/|\/$/g,String.fromCharCode(135));
+  return expression.replace(/^\/|\/$/g, set.REGEX_DELIMITER);
 }
 
 function handleFunction(tokens, subject, index){
@@ -142,8 +149,8 @@ function captureReplaceStatement(tokens, subject, index){
   if(args.length != 2) err(`Wrong number of arguments for replace function, expected 2, get ${args.length}`);
 
   var isRegex = args[0].length == 1 && args[0][0].match(/^\/.*\/$/),
-    expression = groupStatements(args[0]),
-    replacement = groupStatements(args[1]),
+    expression = processStatements(args[0]),
+    replacement = processStatements(args[1]),
     statement = handleReplaceStatement(subject, expression, replacement, isRegex);
 
   return {
@@ -158,33 +165,58 @@ function handleReplaceStatement(subject, expression, replacement, isRegex){
 }
 
 function catureMatchStatement(tokens, subject, index){
-  var { endingIndex, args } = extractInternalsFromBrackets(tokens, "(", index);
+  var { endingIndex, args } = extractInternalsFromBrackets(tokens, "(", index),
+    statement;
+
+  console.log("args from match stat:\n",args)
+
+  switch(args.length){
+
+    case 1:
+      statement = handleMatch(subject, processStatements(args[0]));
+      break;
+
+    case 2:
+      statement = handleCapture(subject, processStatements(args[0]), processStatements(args[1]));
+      break;
+
+    default:
+      err(`Wrong number of arguments for match function, expected 1 or 2, got ${args.length}`);
+  }
+
   return {
-    statement: handleMatch(subject, args[0][0]), // handleMatch evaluate if the argument is a regex or not but this cannot be done while accepting statements as an agrgument to handleMatch. Should find a better solution
-    index: endingIndex
+    index: endingIndex,
+    statement
   };
+
 }
 
-// Potential issue with evalutaing regex. Regex will be evaluted 
-// TODO: Adjust to wok with partial match
-function handleMatch(left,right){
-  var func = right.match(/^\/.*\/$/) ? gen.RegexReplace : gen.Replace;
+// TODO since a single argument match statment would be indended to have a boolean response then this should be packed like a capture inside of an if statement
+function handleMatch(subject, expression){
+  var func = expression[0] === String.fromCharCode(135) ? gen.RegexReplace : gen.Replace;
   return gen.IfStatment(
-    func(left,right.replace(/^\/|\/$/g,''),''),
+    func(subject, expression, ''),
     "",
     "true"
   )
 }
 
+function handleCapture(subject, expression, index){
+  if(isNaN(parseInt(index))) warning("Second of two  arguments in a match statment should be capture group index (int)");
+  if(expression[0] !== set.REGEX_DELIMITER || !expression.match(/(.*)/)) warning("First of two arguments in a match statement should be a regex with at least one capture group")
+  index = isNaN(parseInt(index)) ? index : `$${index}`;
+  return gen.RegexReplace(subject,expression,index);
+}
+
 function captureIfStatement(tokens, index){
   var {endingIndex, args } = extractInternalsFromBrackets(tokens,"(",index);
-  var condition = groupStatements(args[0]);
+  var condition = processStatements(args[0]);
   var {endingIndex, args} = extractInternalsFromBrackets(tokens,"{",endingIndex);
-  var whenTrue = groupStatements(args[0]);
+  var whenTrue = processStatements(args[0]);
   var whenFalse = "";
   if(tokens[endingIndex + 1] && tokens[endingIndex + 1] == "else"){
     var {endingIndex, args} = extractInternalsFromBrackets(tokens,"{",endingIndex + 1);
-    whenFalse = groupStatements(args[0]);
+    whenFalse = processStatements(args[0]);
   }
 
   return {
@@ -255,9 +287,13 @@ function tokenize(content){
 
   var tokens = content.split('');
   tokens = groupEscapeable(tokens,'"',true);
+  console.log(tokens)
   tokens = groupEscapeable(tokens,"/",true);
+  console.log(tokens)
   tokens = groupTokens(tokens);
+  console.log(tokens)
   return tokens
+
 }
 
 function groupEscapeable(tokens,token,escapeable){
@@ -339,6 +375,10 @@ function superLog(msg){
 
 function err(msg){
   console.log(msg ? msg : "Parsing error");
+}
+
+function warning(msg){
+  console.log(`***** Warning *****\n\t${msg}`);
 }
 
 module.exports = {

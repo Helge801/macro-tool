@@ -1,5 +1,6 @@
 var gen = require('./gens.js');
 var eva = require('./evaluator.js');
+var set = require('./settings.js');
 
 var args = process.argv.slice(2);
 const FLAGS = {};
@@ -98,10 +99,10 @@ function escapeMacro(macro){
       case "\\":
         return escapeChar(c,layer + a);
 
-      case String.fromCharCode(134):
-      case String.fromCharCode(135):
+      case set.STRING_DELIMITER:
+      case set.REGEX_DELIMITER:
         e = e ? undefined : c;
-        a = e == String.fromCharCode(134) ? 1 : 0;
+        a = e == set.STRING_DELIMITER ? 1 : 0;
         return '';
 
       default:
